@@ -9,6 +9,12 @@ and the function together (e.g 'tablex.imap') as the 'tag'.  No extended type in
 indication of file scope.
 
 Invocation is easy - this script only needs Lua (5.1 or 5.2) and is to be passed the filenames to be processed.
-On Windows, a single wildcard argument will be expanded.
+On Windows, wildcard arguments will also be expanded.
 
 As with `ctags`, a single file 'tags' is generated in the directory where `ltags` is invoked.
+
+The `-nv` option switches off module-level local variable tagging. 
+The common practice of declaring imported functions as locals up front can complicate 
+the simple business of going to the original definition.  So if we had `local imap = tablex.imap` up
+top then there would be two items with name 'imap' visible in that module - the local alias
+and the actual function.  Not a problem if your editor is comfortable with multiple tag values.

@@ -1,17 +1,26 @@
 #!/usr/bin/env lua
+
+local usage = [[
+Lua extended tag file generator, vs 0.1
+usage: ltags [options]  <scripts>
+    -nv  no variables
+    -v verbose
+]]
+
 local TAG_HEADER = [[
 !_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
 !_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
 !_TAG_PROGRAM_AUTHOR	steve.j.donovan@gmail.com
 !_TAG_PROGRAM_NAME	ltags	//
-!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_URL	http://github.com/stevedonovan/ltags	/official site/
 !_TAG_PROGRAM_VERSION	0.1	//
 ]]
 
 local entries, append = {}, table.insert
 
-local function process_file (file)
-    local skip, end_block
+local function process_file (file, opts)
+    local tag_vars = not opts.nv
+    local skip, end_block, mod_name
     for line in io.lines(file) do
         -- skipping commentary --
         local comment = line:match '^%s*%-%-(.+)'
@@ -33,10 +42,17 @@ local function process_file (file)
         else
             local local_var, is_var
             local maybe_local,fname,arg = line:match '^%s*(%a*)%s*function%s+(%S+)%s*%(%s*(.+)'
-            if not fname and not level then -- look for file-scope locals
-                -- we assume that no-one would be so stupid as to not use indentation...
+            if not fname then 
+                local mmod = line:match '^%s*module%s*(.+)'
+                if mmod then
+                    mod_name = mmod:match '^%(*[\'"](.-)[\'"]'
+                    if not mod_name then
+                        mod_name = file:match '([^%.\\/]+)%.lua$'
+                    end
+                end
+                -- look for file-scope locals (we assume that everyone uses indentation)
                 local_var = line:match '^local%s+(.+)'
-                if local_var then
+                if local_var  and tag_vars then
                     -- not interested in actual values (for now)
                     local_var = local_var:gsub('%s*=.+','')
                     for w in local_var:gmatch('[%w_]+') do
@@ -49,6 +65,7 @@ local function process_file (file)
                 local tbl, sep, name = fname:match '([^.:]+)([.:])(.+)'
                 if not tbl then
                     name = fname
+                    e.tbl = mod_name
                 else
                     e.klass = sep == ':' or arg:match 'self%s*[,%)]'
                     e.tbl = tbl
@@ -60,23 +77,9 @@ local function process_file (file)
     end
 end
 
-local function glob (args)
-    if #args == 1 and args[1]:match '[%*%?]' then
-        -- no shell globbing, it's Windows :(
-        local wildcard = args[1]
-        table.remove(args,1)
-        local f = io.popen('dir /b '..wildcard)
-        local path = wildcard:match [[(.-\)[^\]+$]] or ''
-        for line in f:lines() do
-            append(args,path..line)
-        end
-        f:close()
-    end
-end
-
-local function main (files)
+local function main (files, opts)
     for _,f in ipairs(files) do
-        process_file(f)
+        process_file(f, opts)
     end
     table.sort(entries,function(e1,e2) return e1.name < e2.name end)
     local out = io.open("tags","w")
@@ -93,5 +96,74 @@ local function main (files)
     out:close()
 end
 
-glob(arg)
-main (arg)
+local function glob (args)
+    local res = {}
+    for _,a in ipairs(args) do
+        if a:match '[%*%?]' then -- no shell globbing, it's Windows :(
+            local f = io.popen('dir /b '..a)
+            local path = a:match [[(.-\)[^\]+$]] or ''
+            for line in f:lines() do
+                append(res,path..line)
+            end
+            f:close()
+        else
+            append(res,a)
+        end
+    end
+    return res
+end
+
+local function quit (msg,...)
+    if msg then io.stderr:write('ltags: ',msg:format(...),'\n') end
+    print()
+    print(usage)
+    os.exit(1)
+end
+
+local function parse_args ()
+    local args, opts = {}, {}
+    local takes_value, known_flags = {},{}
+    local i = 1    
+    for line in usage:gmatch '[^\n]+' do
+        local flag,rest = line:match '^%s+%-(%S+)%s+(.*)'
+        if flag then
+            known_flags[flag] = true
+            local valspec = rest:match '^%b<>'
+            if valspec then
+                takes_value[flag] = valspec:match '%.%.%.' and 'multiple' or 'single'
+            end
+        end
+    end
+    while i <= #arg do
+        local a,val = arg[i]
+        local flag = a:match '^%-(.+)'
+        if flag then
+            if not known_flags[flag] then quit('-'..flag..' unknown flag') end
+            -- grab the next argument if we need a value
+            if takes_value[flag] and not val then
+                i = i + 1
+                if i > #arg then quit('-'..flag..' needs a value') end
+                if takes_value[flag] == 'multiple' then
+                    val = opts[flag] or {}
+                    append(val,arg[i])
+                else
+                    if opts[flag] then quit('-'..flag..' takes only one value') end
+                    val = arg[i]
+                end
+            end
+            opts[flag] = val or true
+        else
+            append(args,a)
+        end
+        i = i + 1
+    end    
+    return glob(args), opts
+end
+
+local files, opts = parse_args()
+if opts.v then
+    for _,f in ipairs(files) do
+        print(f)
+    end
+end
+main (files, opts)
