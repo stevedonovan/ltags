@@ -1,0 +1,97 @@
+#!/usr/bin/env lua
+local TAG_HEADER = [[
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	steve.j.donovan@gmail.com
+!_TAG_PROGRAM_NAME	ltags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	0.1	//
+]]
+
+local entries, append = {}, table.insert
+
+local function process_file (file)
+    local skip, end_block
+    for line in io.lines(file) do
+        -- skipping commentary --
+        local comment = line:match '^%s*%-%-(.+)'
+        skip = comment ~= nil
+        if skip then
+            if end_block then -- inside block comment
+                if line:match (end_block) then
+                    skip = false
+                    end_block = nil
+                end                    
+            else
+                local block = comment:match '%[(=*)%['
+                if block then -- e.g. [=[, so hunt for ]=]
+                    end_block = block:gsub('%[',']')
+                else -- plain line comment
+                    skip = false
+                end
+            end
+        else
+            local local_var, is_var
+            local maybe_local,fname,arg = line:match '^%s*(%a*)%s*function%s+(%S+)%s*%(%s*(.+)'
+            if not fname and not level then -- look for file-scope locals
+                -- we assume that no-one would be so stupid as to not use indentation...
+                local_var = line:match '^local%s+(.+)'
+                if local_var then
+                    -- not interested in actual values (for now)
+                    local_var = local_var:gsub('%s*=.+','')
+                    for w in local_var:gmatch('[%w_]+') do
+                        append(entries, {file=file, line=line, is_var=true, file_scope=true, name=w})
+                    end
+                end
+            else -- Houston, we have a Function
+                local e = {file = file, line = line}
+                e.file_scope = maybe_local == 'local'
+                local tbl, sep, name = fname:match '([^.:]+)([.:])(.+)'
+                if not tbl then
+                    name = fname
+                else
+                    e.klass = sep == ':' or arg:match 'self%s*[,%)]'
+                    e.tbl = tbl
+                end
+                e.name = name
+                append(entries,e)
+            end
+        end
+    end
+end
+
+local function glob (args)
+    if #args == 1 and args[1]:match '[%*%?]' then
+        -- no shell globbing, it's Windows :(
+        local wildcard = args[1]
+        table.remove(args,1)
+        local f = io.popen('dir /b '..wildcard)
+        local path = wildcard:match [[(.-\)[^\]+$]] or ''
+        for line in f:lines() do
+            append(args,path..line)
+        end
+        f:close()
+    end
+end
+
+local function main (files)
+    for _,f in ipairs(files) do
+        process_file(f)
+    end
+    table.sort(entries,function(e1,e2) return e1.name < e2.name end)
+    local out = io.open("tags","w")
+    out:write(TAG_HEADER)
+    for _,e in ipairs(entries) do
+        local fields = e.is_var and 'v' or 'f '
+        if e.file_scope then
+            fields = fields..'\tfile:'
+        elseif e.tbl then
+            fields = 'm\t'..(e.klass and 'class' or 'struct')..':'..e.tbl
+        end
+        out:write(('%s\t%s\t/^%s$/;"\t%s\n'):format(e.name,e.file,e.line,fields))
+    end
+    out:close()
+end
+
+glob(arg)
+main (arg)
