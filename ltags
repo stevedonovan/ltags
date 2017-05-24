@@ -1,11 +1,14 @@
 #!/usr/bin/env lua
 
+require "io"
+
 local usage = [[
 Lua extended tag file generator, vs 0.1
 usage: ltags [options]  <scripts>
     -nv  no variables
     -nr  no local require variables (implied by -nv)
     -v verbose
+    -filelist <file-containing-filenames>
 ]]
 
 local TAG_HEADER = [[
@@ -161,7 +164,13 @@ local function parse_args ()
         end
         i = i + 1
     end    
-    return glob(args), opts
+    local files = glob(args)
+    if opts.filelist then
+        for line in io.lines(opts.filelist) do
+            table.insert(files, line)
+        end
+    end
+    return files, opts
 end
 
 local files, opts = parse_args()
