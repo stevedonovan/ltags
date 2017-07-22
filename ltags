@@ -4,6 +4,7 @@ local usage = [[
 Lua extended tag file generator, vs 0.1
 usage: ltags [options]  <scripts>
     -nv  no variables
+    -nr  no local require variables (implied by -nv)
     -v verbose
 ]]
 
@@ -20,6 +21,7 @@ local entries, append = {}, table.insert
 
 local function process_file (file, opts)
     local tag_vars = not opts.nv
+    local tag_require = not opts.nr
     local skip, end_block, mod_name
     for line in io.lines(file) do
         -- skipping commentary --
@@ -52,11 +54,13 @@ local function process_file (file, opts)
                 end
                 -- look for file-scope locals (we assume that everyone uses indentation)
                 local_var = line:match '^local%s+(.+)'
-                if local_var  and tag_vars then
-                    -- not interested in actual values (for now)
-                    local_var = local_var:gsub('%s*=.+','')
-                    for w in local_var:gmatch('[%w_]+') do
-                        append(entries, {file=file, line=line, is_var=true, file_scope=true, name=w})
+                if local_var and tag_vars then
+                    if tag_require or local_var:find('=%s*require%W') == nil then
+                        -- not interested in actual values (for now)
+                        local_var = local_var:gsub('%s*=.+','')
+                        for w in local_var:gmatch('[%w_]+') do
+                            append(entries, {file=file, line=line, is_var=true, file_scope=true, name=w})
+                        end
                     end
                 end
             else -- Houston, we have a Function

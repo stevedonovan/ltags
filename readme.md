@@ -18,3 +18,9 @@ The common practice of declaring imported functions as locals up front can compl
 the simple business of going to the original definition.  So if we had `local imap = tablex.imap` up
 top then there would be two items with name 'imap' visible in that module - the local alias
 and the actual function.  Not a problem if your editor is comfortable with multiple tag values.
+
+The `-nr` option switches off module-level local require tagging.
+Class systems that return the class table from require produce lots of noise but the class definition is
+removed by -nv (it's too aggressive). If we had `local Animal = class(function(a,name) a.name = name end)`,
+then that definition would be removed by -nv but is retained with -nr and imports of that class like `local
+Animal = require("Animal")` are not tagged.
