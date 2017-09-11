@@ -24,3 +24,7 @@ Class systems that return the class table from require produce lots of noise but
 removed by -nv (it's too aggressive). If we had `local Animal = class(function(a,name) a.name = name end)`,
 then that definition would be removed by -nv but is retained with -nr and imports of that class like `local
 Animal = require("Animal")` are not tagged.
+
+The `-filelist` option takes a file full of filenames to process.
+Passing filenames in a file instead of on the command-line may be preferable if you cannot use globs or have
+other scripts that determine which files to parse.
